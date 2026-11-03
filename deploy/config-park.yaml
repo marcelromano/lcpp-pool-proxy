@@ -1,0 +1,30 @@
+# pool-proxy in shadow mode (:8100). Nao esta no LiteLLM: so recebe quem chamar direto.
+# Modelo unico "local/pool": 27B na 3090 (primario) e 35B nas MI50 (np 2) — escolha por custo/afinidade.
+host: 0.0.0.0
+port: 8100
+models: ["local/pool"]
+settings:
+  client_key_env: POOL_CLIENT_KEY
+  affinity_max_wait_s: 30
+  spill_after_s: 60
+  queue_timeout_s: 120
+  long_prompt_tokens: 3000
+  health_interval_s: 10
+  probe_enabled: true        # engines sem slot-telemetry caem no espelho local
+backends:
+  - name: rtx3090-27b        # mainline + ckpt-persist, np 1
+    url: http://rtx3090-host:8001
+    key_env: POOL_KEY_RTX3090
+    vision: true
+    ctx_max: 131072
+    np: 1
+    prefill_tps: 800
+    decode_tps: 65
+  - name: mi50-35b           # mainline gfx906 b2, np 2
+    url: http://mi50-host:8004
+    key_env: POOL_KEY_MI50
+    vision: true
+    ctx_max: 190000
+    np: 2
+    prefill_tps: 400
+    decode_tps: 100

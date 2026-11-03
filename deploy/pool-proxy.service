@@ -1,0 +1,19 @@
+[Unit]
+Description=pool-proxy :8100
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+EnvironmentFile=/etc/pool-proxy.env
+ExecStart=/opt/pool-proxy/.venv/bin/python -m pool_proxy -c /opt/pool-proxy/deploy/config-park.yaml
+WorkingDirectory=/opt/pool-proxy
+Restart=on-failure
+RestartSec=10
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

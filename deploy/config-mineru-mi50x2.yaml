@@ -1,0 +1,12 @@
+# teste: MinerU 1.2B, uma instancia por MI50 (card0 :8031, card1 :8032), pool-proxy na frente (:8101)
+host: 0.0.0.0
+port: 8101
+models: ["mineru"]
+settings:
+  probe_enabled: false
+  queue_timeout_s: 600
+  spill_after_s: 100000
+  affinity_max_wait_s: 0
+backends:
+  - {name: mi50-0, url: "http://mi50-host:8031", vision: true, ctx_max: 8192, np: 8, prefill_tps: 2000, decode_tps: 60}
+  - {name: mi50-1, url: "http://mi50-host:8032", vision: true, ctx_max: 8192, np: 8, prefill_tps: 2000, decode_tps: 60}

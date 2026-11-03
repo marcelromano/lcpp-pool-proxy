@@ -1,0 +1,155 @@
+host: 0.0.0.0
+port: 8100
+models:
+- local/pool
+- qwen3.8-27b
+- qwen3.6-35b
+- mineru
+settings:
+  client_key_env: POOL_CLIENT_KEY
+  affinity_max_wait_s: 30
+  spill_after_s: 60
+  queue_timeout_s: 120
+  long_prompt_tokens: 3000
+  health_interval_s: 10
+  probe_enabled: true
+  low_max_inflight: 2
+  low_session: true
+  low_session_min_tokens: 8192
+  low_session_max_bytes: 21474836480
+  low_session_min_free_bytes: 2147483648
+  low_session_save_every_tokens: 4096
+  low_handoff: true
+  low_handoff_min_tokens: 8192
+  low_handoff_est_factor: 1.35
+  low_handoff_wait_s: 90
+  low_session_save_from:
+  - rtx3090-27b
+  - mi50-router
+  handoff_enabled: true
+  handoff_source: rtx3090-27b
+  handoff_target: mi50-router
+  handoff_models:
+  - local/pool
+  - qwen3.8-27b
+  handoff_min_tokens: 8192
+  handoff_timeout_s: 240
+  handoff_transport: shared
+  handoff_switch_overlap: true
+  handoff_source_dir: /kvslots/handoff
+  handoff_target_dir: /kvslots/handoff
+  handoff_35b:
+    # Handoff do 35B: prefill na 3090 (engine de troca, par do swap engine) -> decode no mi50-35b.
+    # Deploy inicial com enabled: false; vira true depois das provas de producao.
+    enabled: true
+    models:
+    - qwen3.6-35b
+    - batch/35b
+    router_model: mi50-35b
+    min_tokens: 64000
+    max_cached_tokens: 8192
+    source: rtx3090-27b
+    target: mi50-router
+    ctl_url: http://rtx3090-host:8017
+    ctl_key_env: POOL_KEY_PREFILL35
+    ctl_timeout_s: 120
+    open_timeout_s: 300
+    close_timeout_s: 300
+    lease_timeout_s: 150
+    reconcile_timeout_s: 20
+    tokens_timeout_s: 120
+    stage_timeout_s: 180
+    open_ttl_s: 900
+    hold_wait_s: 90
+    health_interval_s: 30
+    engine_id: prefill35-3090
+    engine_owner: proxy
+    source_np: 2
+    target_np: 2
+    source_ctx_slot: 131072
+    expected_preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+    prefills_tps: 1800
+    prefill_margin: 1.6
+    stage_overhead_s: 90
+    ledger_dir: /var/lib/pool-proxy/slot-operations
+backends:
+- name: rtx3090-27b
+  models:
+  - local/pool
+  - qwen3.8-27b
+  url: http://rtx3090-host:8001
+  key_env: POOL_KEY_RTX3090
+  vision: true
+  ctx_max: 131072
+  kv_unified_ctx: 131072
+  np: 2
+  prefill_tps: 630
+  decode_tps: 65
+  handoff_model_path: /models/qwen3.8-27b-gsqrco-iq3s-mtp/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
+  handoff_gguf_path: /models/qwen3.8-27b-gsqrco-iq3s-mtp/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
+  handoff_state_format: mainline-de699957-ckp-cuda3090+gfx906r6-kvq8_0-q4_0-mtp2
+  slotops_ledger_dir: /var/lib/pool-proxy/slot-operations
+  engine_id: rtx3090-27b
+  engine_owner: proxy
+- name: mi50-router
+  url: http://mi50-host:8004
+  key_env: POOL_KEY_MI50
+  router: true
+  vision: true
+  np: 2
+  kv_unified_ctx: 262144
+  ctx_max: 131072
+  prefill_tps: 220
+  decode_tps: 30
+  default_mode: m35
+  default_model: mi50-27b
+  model_aliases:
+    qwen3.8-27b: mi50-27b
+    qwen3.6-35b: mi50-35b
+    mineru: mineru-a
+  modes:
+    m35:
+    - mi50-35b
+    m27:
+    - mi50-27b
+    mineru1:
+    - mineru-a
+  no_slot_save:
+  - mineru-a
+  mode_policy:
+    demand_window_s: 300
+    switch_min_dwell_s: 10
+    switch_min_requests: 1
+    min_mode_s: 120
+    busy_threshold_requests: 4
+    drain_timeout_s: 180
+    switch_timeout_s: 180
+    load_timeout_s: 300
+    unload_timeout_s: 180
+    op_timeout_s: 60
+    fail_backoff_s: 120
+    recover_interval_s: 60
+    save_slots: true
+    save_min_tokens: 256
+    low_switch: true
+    low_switch_dwell_s: 60
+    swap_estimate_s: 12
+  handoff_model: mi50-27b
+  handoff_model_path: /models/qwen3.8-27b-gsqrco-iq3s-mtp/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
+  handoff_gguf_path: /models/qwen3.8-27b-gsqrco-iq3s-mtp/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf
+  handoff_state_format: mainline-de699957-ckp-cuda3090+gfx906r6-kvq8_0-q4_0-mtp2
+  handoff_preset:
+    cache-type-k: q8_0
+    cache-type-v: q4_0
+    kv-unified: 'true'
+  slotops_ledger_dir: /var/lib/pool-proxy/slot-operations
+  model_engine_ids:
+    mi50-35b: mi50-35b
+    mi50-27b: mi50-27b
+    mineru-a: mineru-a
+  model_engine_owners:
+    mi50-35b: proxy
+    mi50-27b: proxy
+    mineru-a: proxy

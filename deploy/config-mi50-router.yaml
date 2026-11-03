@@ -1,0 +1,50 @@
+# pool-proxy na frente do router mainline das 2x MI50. Preset: tests/rtmi50.ini (nomes das secoes = modelos).
+# Teste (nao producao): router em :8024 (a local router launcher) e proxy em :8102. O proxy e o unico controlador do router:
+# nao rodar the engine launcher junto. Unit do router: TimeoutStopSec >= 600 (stop-timeout do preset = 120).
+# MinerU em 2 placas NAO e um modo aqui: o mmproj de um filho com device=ROCm1 cai na ROCm0 (clip pega a 1a GPU),
+# e o proxy so manda um nome de modelo por pedido. Use `mineru1` (1 placa) ou o arranjo externo de config-mineru-mi50x2.yaml.
+host: 0.0.0.0
+port: 8102
+models: ["qwen3.6-35b", "qwen3.8-27b", "mineru"]
+settings:
+  probe_enabled: false          # o probe slot-telemetry nao consulta backends router
+  health_interval_s: 10
+  queue_timeout_s: 300
+  spill_after_s: 600
+backends:
+  - name: mi50-router
+    url: http://mi50-host:8024
+    key_env: POOL_KEY_MI50      # vazio no teste (router sem --api-key)
+    router: true
+    slotops_ledger_dir: /var/lib/pool-proxy/slot-operations
+    model_engine_ids: {mi50-35b: mi50-router-mi50-35b, mi50-27b: mi50-router-mi50-27b, mineru-a: mi50-router-mineru-a}
+    model_engine_owners: {mi50-35b: pool-proxy, mi50-27b: pool-proxy, mineru-a: pool-proxy}
+    vision: true
+    np: 2
+    ctx_max: 262144             # o menor dos modos com LLM (27B); 35B tem 190k por slot
+    prefill_tps: 400
+    decode_tps: 90
+    default_mode: m35
+    default_model: mi50-35b
+    model_aliases: {qwen3.6-35b: mi50-35b, qwen3.8-27b: mi50-27b, mineru: mineru-a}
+    modes:
+      m35: [mi50-35b]
+      m27: [mi50-27b]
+      mineru1: [mineru-a]
+    no_slot_save: [mineru-a]    # sem --slot-save-path: evita 8 x 501 por troca
+    mode_policy:
+      demand_window_s: 300
+      switch_min_dwell_s: 30
+      switch_min_requests: 3
+      min_mode_s: 300           # troca custa ~10 s medidos; o custo real e o prefill perdido, que o save/restore cobre
+      busy_threshold_requests: 4
+      drain_timeout_s: 180
+      switch_timeout_s: 120
+      load_timeout_s: 300
+      unload_timeout_s: 180     # >= stop-timeout do preset (120)
+      op_timeout_s: 60
+      fail_backoff_s: 120       # MI50: nao reinsistir em load que falhou (crash loop / TDR)
+      recover_interval_s: 60
+      save_slots: true
+      save_min_tokens: 256
+      swap_estimate_s: 12

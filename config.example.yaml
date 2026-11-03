@@ -1,0 +1,93 @@
+# Parque: topologia A (3 replicas do Qwen3.8-27B). Sem chaves: key_env e o NOME da variavel.
+# Numeros de prefill/decode sao estimativas iniciais (calibrar medindo).
+host: 0.0.0.0
+port: 8100
+models: ["qwen3.8-27b"]
+
+settings:
+  affinity_max_wait_s: 30   # afinidade so se a espera estimada couber
+  spill_after_s: 60         # espera estimada acima disto -> overflow
+  queue_timeout_s: 120      # espera real por slot; estourou -> overflow ou 503
+  long_prompt_tokens: 3000  # prompt frio acima disto -> maior prefill_tps
+  chars_per_token: 3.5
+  health_interval_s: 10
+  health_failures: 2
+  probe_enabled: true        # afinidade por slot via slot-telemetry (/slots + tokenizacao)
+  probe_slots_timeout_s: 0.8 # /slots passa pela fila do servidor
+  probe_slots_ttl_s: 1.5
+
+backends:
+  - name: rtx3090            # ik_llama :8001
+    url: http://gpu-host:8001
+    key_env: POOL_KEY_RTX3090
+    vision: true
+    ctx_max: 260000
+    np: 1
+    weight: 1.0
+    prefill_tps: 1000
+    decode_tps: 68
+
+  - name: mi50-0             # mainline, -sm none
+    url: http://gpu-host:8011
+    key_env: POOL_KEY_MI50
+    vision: false
+    ctx_max: 200000
+    np: 2
+    prefill_tps: 140
+    decode_tps: 31
+
+  - name: mi50-1
+    url: http://gpu-host:8012
+    key_env: POOL_KEY_MI50
+    vision: false
+    ctx_max: 200000
+    np: 2
+    prefill_tps: 140
+    decode_tps: 31
+
+  - name: overflow-35b       # alias do LiteLLM (35B ou nuvem); so recebe spill
+    url: http://litellm-host:4000
+    key_env: POOL_KEY_LITELLM
+    overflow: true
+    vision: true
+    np: 4
+    prefill_tps: 1000
+    decode_tps: 100
+
+  # Backend em router mode (llama-server mainline sem --model, --no-models-autoload). Um arranjo de
+  # modelos ("modo") ativo por vez; o pool-proxy troca de modo por demanda.
+  # Pedidos sao roteados para ele pelo campo `model` (nome canonico, alias ou default_model).
+  # - name: mi50-router         # ; preset com stop-timeout=120 e slot-save-path por modelo
+  #   url: http://gpu-host:8010
+  #   key_env: POOL_KEY_MI50
+  #   router: true
+  #   np: 2
+  #   ctx_max: 200000
+  #   prefill_tps: 140
+  #   decode_tps: 31
+  #   default_mode: m27         # modo aplicado no start se o conjunto carregado nao casar com nenhum
+  #   default_model: qwen38-27b-mi50a # modelo para pedidos cujo `model` o router nao conhece (ex.: "qwen3.8-27b")
+  #   model_aliases: {qwen3.8-27b: qwen38-27b-mi50a, qwen3.6-35b: qwen35-moe-2gpu}
+  #   modes:                    # modo -> modelos (nomes das secoes do preset INI do router)
+  #     m27: [qwen38-27b-mi50a, qwen38-27b-mi50b]   # carregados um de cada vez, na ordem
+  #     m35: [qwen35-moe-2gpu]
+  #   no_slot_save: []          # modelos sem --slot-save-path (ex.: MinerU): pula save/restore (501 tambem e tratado como "sem estado")
+  #   mode_policy:              # tudo em segundos
+  #     demand_window_s: 300        # janela deslizante de pedidos por modelo pedido
+  #     switch_min_dwell_s: 60      # demanda do outro modo deve se estender por este intervalo
+  #     switch_min_requests: 3      # e ter ao menos tantos pedidos na janela
+  #     min_mode_s: 600             # tempo minimo no modo atual
+  #     switch_margin_requests: 0   # >0: empate com o modo atual em uso nao troca (demanda esperando >= dele + margem)
+  #     busy_threshold_requests: 2  # modo atual ocupado so bloqueia se tem >= isto na janela
+  #     drain_timeout_s: 120        # espera dos pedidos em voo; estourou => troca abortada, nada descarregado
+  #     switch_timeout_s: 120       # espera de um pedido por modelo indisponivel; depois spill/503
+  #     load_timeout_s: 300
+  #     unload_timeout_s: 180       # >= stop-timeout do preset (MI50: 120)
+  #     fail_backoff_s: 60          # apos falha, dobra a cada falha seguida (max x64)
+  #     recover_interval_s: 30
+  #     save_slots: true
+  #     save_min_tokens: 256        # so salva slot com cache >= isto
+  #     swap_estimate_s: 30         # penalidade de custo inicial p/ modelo fora do modo (vira EMA)
+# Handoff B+ e opt-in. See README: identidades GGUF, contrato ABI/KV e mounts
+# precisam ser definidos antes de settings.handoff_enabled: true.
+# Defaults: handoff_enabled=false, handoff_min_tokens=8192, transporte=shared.
