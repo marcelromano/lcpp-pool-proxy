@@ -360,7 +360,7 @@ class ColdHandoff:
     async def quiesce(self, st, slot=None, timeout=None):
         """Depois de um preparo cancelado o /completion da origem pode continuar ocupando o slot por instantes.
         O caminho normal escolhe slot por LCP similarity: se o slot ainda estiver `is_processing`, o engine escolhe
-        OUTRO slot e apaga o prefixo parcial que ja estava quente (foi o que aconteceu na rodada 3 de rodada
+        OUTRO slot e apaga o prefixo parcial que ja estava quente (foi o que aconteceu em uma rodada
         normal refez 130k tokens frios). Espera, limitado, o slot sair de processing. True = livre. Nunca levanta."""
         budget = self.s.handoff_quiesce_s if timeout is None else timeout
         if budget <= 0:
